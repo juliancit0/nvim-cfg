@@ -20,6 +20,7 @@ return {
 
     -- Add your own debuggers here
     'leoluz/nvim-dap-go',
+    'nvim-neotest/nvim-nio'
   },
   config = function()
     local dap = require 'dap'
@@ -32,7 +33,30 @@ return {
 
       -- You can provide additional configuration to the handlers,
       -- see mason-nvim-dap README for more information
-      handlers = {},
+      handlers = {
+        function(config)
+          require('mason-nvim-dap').default_setup(config)
+        end,
+        php = function(config)
+          config.configurations = {
+            {
+              type = 'php',
+              request = 'launch',
+              name = "Listen for XDebug",
+              port = 9005,
+              log = true,
+              pathMappings = {
+                ["/bitnami/wordpress"] = '/home/juliancit0/jusmet/VCP-VMR-master/',
+                ['/opt/bitnami/wordpress'] = '/home/juliancit0/jusmet/VCP-VMR-master/'
+              },
+              hostname = '::',
+            }
+          }
+
+          require('mason-nvim-dap').default_setup(config) -- don't forget this!
+        end,
+
+      },
 
       -- You'll need to check that you have the required things installed
       -- online, please don't ask me how to install them :)
