@@ -30,6 +30,7 @@ return {
       -- Makes a best effort to setup the various debuggers with
       -- reasonable debug configurations
       automatic_setup = true,
+      automatic_installation = false,
 
       -- You can provide additional configuration to the handlers,
       -- see mason-nvim-dap README for more information
@@ -46,8 +47,8 @@ return {
               port = 9005,
               log = true,
               pathMappings = {
-                ["/bitnami/wordpress"] = '/home/juliancit0/jusmet/VCP-VMR-master/',
-                ['/opt/bitnami/wordpress'] = '/home/juliancit0/jusmet/VCP-VMR-master/'
+                ["/bitnami/wordpress"] = '/Users/juliancit0/Code/jusmet/VCP-VMR/',
+                ['/opt/bitnami/wordpress'] = '/Users/juliancit0/Code/jusmet/VCP-VMR/'
               },
               hostname = '::',
             }
@@ -63,6 +64,7 @@ return {
       ensure_installed = {
         -- Update this to ensure that you have the debuggers for the langs you want
         'delve',
+        'node-debug2-adapter',
       },
     }
 
@@ -108,5 +110,64 @@ return {
 
     -- Install golang specific config
     require('dap-go').setup()
+    
+    -- Enable debug logging
+    dap.set_log_level('INFO')
+    
+    -- Node.js debugging configuration
+    dap.adapters.node2 = {
+      type = 'executable',
+      command = 'node',
+      args = {vim.fn.stdpath("data") .. '/mason/packages/node-debug2-adapter/out/src/nodeDebug.js'},
+    }
+    
+    -- Docker container debugging configuration
+    dap.configurations.javascript = {
+      {
+        name = 'Launch',
+        type = 'node2',
+        request = 'launch',
+        program = '${file}',
+        cwd = vim.fn.getcwd(),
+        sourceMaps = true,
+        protocol = 'inspector',
+        console = 'integratedTerminal',
+      },
+      {
+        name = 'Attach to Docker',
+        type = 'node2',
+        request = 'attach',
+        port = 9229,
+        host = 'localhost',
+        sourceMaps = true,
+        localRoot = vim.fn.getcwd(),
+        remoteRoot = '/usr/src/app',
+      },
+    }
+    
+    dap.configurations.typescript = {
+      {
+        name = 'Launch',
+        type = 'node2',
+        request = 'launch',
+        program = '${file}',
+        cwd = vim.fn.getcwd(),
+        sourceMaps = true,
+        protocol = 'inspector',
+        console = 'integratedTerminal',
+        runtimeExecutable = 'node',
+        runtimeArgs = { '-r', 'ts-node/register' },
+      },
+      {
+        name = 'Attach to Docker',
+        type = 'node2',
+        request = 'attach',
+        port = 9229,
+        host = 'localhost',
+        sourceMaps = true,
+        localRoot = vim.fn.getcwd(),
+        remoteRoot = '/usr/src/app',
+      },
+    }
   end,
 }

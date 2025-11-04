@@ -257,20 +257,47 @@ require('lazy').setup({
     build = ':TSUpdate',
   },
 
+  -- Kulala REST client
+  {
+    'mistweaverco/kulala.nvim',
+    ft = { 'http', 'rest' },
+    opts = {
+      ui = {
+        default_view = 'body',
+        win_opts = {
+          wo = {
+            conceallevel = 0,
+            foldenable = false,
+          }
+        }
+      }
+    },
+    keys = {
+      { '<leader>ks', '<cmd>lua require("kulala").run()<cr>', desc = 'Send the request' },
+      { '<leader>kt', '<cmd>lua require("kulala").toggle_view()<cr>', desc = 'Toggle headers/body' },
+      { '<leader>ki', '<cmd>lua require("kulala").inspect()<cr>', desc = 'Inspect current request' },
+      { '<leader>ko', '<cmd>lua require("kulala").show_stats()<cr>', desc = 'Show response stats' },
+      { '<leader>kc', '<cmd>lua require("kulala").copy()<cr>', desc = 'Copy as cURL' },
+      { '<leader>kj', '<cmd>lua require("kulala").jump_next()<cr>', desc = 'Jump to next request' },
+      { '<leader>kp', '<cmd>lua require("kulala").jump_prev()<cr>', desc = 'Jump to previous request' },
+    },
+  },
+
   -- NOTE: Next Step on Your Neovim Journey: Add/Configure additional "plugins" for kickstart
   --       These are some example plugins that I've included in the kickstart repository.
   --       Uncomment any of the lines below to enable them.
   -- require 'kickstart.plugins.autoformat',
   require 'kickstart.plugins.debug',
+  require 'kickstart.plugins.lazygit',
 
-  'kyazdani42/nvim-tree.lua'
+  'kyazdani42/nvim-tree.lua',
   -- NOTE: The import below can automatically add your own plugins, configuration, etc from `lua/custom/plugins/*.lua`
   --    You can use this folder to prevent any conflicts with this init.lua if you're interested in keeping
   --    up-to-date with whatever is in the kickstart repo.
   --    Uncomment the following line and add your plugins to `lua/custom/plugins/*.lua` to get going.
   --
   --    For additional information see: https://github.com/folke/lazy.nvim#-structuring-your-plugins
-  -- { import = 'custom.plugins' },
+  { import = 'custom.plugins' },
 }, {})
 
 -- [[ Setting options ]]
@@ -702,6 +729,7 @@ vim.keymap.set('v', '<C-s>', '<Esc> :w <CR>', { desc = 'Save file' })
 vim.api.nvim_set_keymap('n', '<leader>do', '<cmd>lua vim.diagnostic.open_float()<CR>', { noremap = true, silent = true })
 vim.api.nvim_set_keymap('n', '<leader>d[', '<cmd>lua vim.diagnostic.goto_prev()<CR>', { noremap = true, silent = true })
 vim.api.nvim_set_keymap('n', '<leader>d]', '<cmd>lua vim.diagnostic.goto_next()<CR>', { noremap = true, silent = true })
+
 -- Move code
 vim.api.nvim_set_keymap("n", "<A-j>", ":m .+1<CR>", { noremap = true, silent = false })
 vim.api.nvim_set_keymap("n", "<A-k>", ":m .-2<CR>", { noremap = true, silent = false })
