@@ -250,11 +250,15 @@ require('lazy').setup({
 
   {
     -- Highlight, edit, and navigate code
+    -- `main` is the branch that supports Neovim 0.11+. The old `master` branch
+    -- ships 2024-era queries that do not match the parsers Neovim 0.12 bundles.
     'nvim-treesitter/nvim-treesitter',
-    dependencies = {
-      'nvim-treesitter/nvim-treesitter-textobjects',
-    },
+    branch = 'main',
+    lazy = false,
     build = ':TSUpdate',
+    dependencies = {
+      { 'nvim-treesitter/nvim-treesitter-textobjects', branch = 'main' },
+    },
   },
 
   -- Kulala REST client
@@ -456,78 +460,85 @@ vim.keymap.set('n', '<leader>sd', require('telescope.builtin').diagnostics, { de
 vim.keymap.set('n', '<leader>sr', require('telescope.builtin').resume, { desc = '[S]earch [R]esume' })
 
 -- [[ Configure Treesitter ]]
--- See `:help nvim-treesitter`
--- Defer Treesitter setup after first render to improve startup time of 'nvim {filename}'
-vim.defer_fn(function()
-  require('nvim-treesitter.configs').setup {
-    -- Add languages to be installed here that you want installed for treesitter
-    ensure_installed = { 'c', 'cpp', 'go', 'lua', 'python', 'rust', 'tsx', 'javascript', 'typescript', 'vimdoc', 'vim', 'bash' },
+-- nvim-treesitter `main` branch. The old `master` API (`nvim-treesitter.configs`)
+-- no longer exists: the plugin now only installs parsers and ships queries, while
+-- Neovim itself starts highlighting and indenting per buffer.
+local ts_languages = {
+  'bash',
+  'c',
+  'cpp',
+  'go',
+  'javascript',
+  'lua',
+  'python',
+  'rust',
+  'tsx',
+  'typescript',
+  'vim',
+  'vimdoc',
+}
 
-    -- Autoinstall languages that are not installed. Defaults to false (but you can change for yourself!)
-    auto_install = false,
-    -- Install languages synchronously (only applied to `ensure_installed`)
-    sync_install = false,
-    -- List of parsers to ignore installing
-    ignore_install = {},
-    -- You can specify additional Treesitter modules here: -- For example: -- playground = {--enable = true,-- },
-    modules = {},
-    highlight = { enable = true },
-    indent = { enable = true },
-    incremental_selection = {
-      enable = true,
-      keymaps = {
-        init_selection = '<c-space>',
-        node_incremental = '<c-space>',
-        scope_incremental = '<c-s>',
-        node_decremental = '<M-space>',
-      },
-    },
-    textobjects = {
-      select = {
-        enable = true,
-        lookahead = true, -- Automatically jump forward to textobj, similar to targets.vim
-        keymaps = {
-          -- You can use the capture groups defined in textobjects.scm
-          ['aa'] = '@parameter.outer',
-          ['ia'] = '@parameter.inner',
-          ['af'] = '@function.outer',
-          ['if'] = '@function.inner',
-          ['ac'] = '@class.outer',
-          ['ic'] = '@class.inner',
-        },
-      },
-      move = {
-        enable = true,
-        set_jumps = true, -- whether to set jumps in the jumplist
-        goto_next_start = {
-          [']m'] = '@function.outer',
-          [']]'] = '@class.outer',
-        },
-        goto_next_end = {
-          [']M'] = '@function.outer',
-          [']['] = '@class.outer',
-        },
-        goto_previous_start = {
-          ['[m'] = '@function.outer',
-          ['[['] = '@class.outer',
-        },
-        goto_previous_end = {
-          ['[M'] = '@function.outer',
-          ['[]'] = '@class.outer',
-        },
-      },
-      swap = {
-        enable = true,
-        swap_next = {
-          ['<leader>a'] = '@parameter.inner',
-        },
-        swap_previous = {
-          ['<leader>A'] = '@parameter.inner',
-        },
-      },
-    },
-  }
-end, 0)
+require('nvim-treesitter').install(ts_languages)
+
+require('nvim-treesitter-textobjects').setup {
+  select = { lookahead = true },
+  move = { set_jumps = true },
+}
+
+vim.api.nvim_create_autocmd('FileType', {
+  desc = 'Start treesitter highlighting and indenting',
+  callback = function(args)
+    local lang = vim.treesitter.language.get_lang(args.match)
+    if not lang or not pcall(vim.treesitter.start, args.buf, lang) then
+      return
+    end
+    vim.bo[args.buf].indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
+  end,
+})
+
+-- Textobjects: select. Capture groups come from textobjects.scm.
+local ts_select = require 'nvim-treesitter-textobjects.select'
+for keys, object in pairs {
+  ['aa'] = '@parameter.outer',
+  ['ia'] = '@parameter.inner',
+  ['af'] = '@function.outer',
+  ['if'] = '@function.inner',
+  ['ac'] = '@class.outer',
+  ['ic'] = '@class.inner',
+} do
+  vim.keymap.set({ 'x', 'o' }, keys, function()
+    ts_select.select_textobject(object, 'textobjects')
+  end, { desc = 'Select ' .. object })
+end
+
+-- Textobjects: move
+local ts_move = require 'nvim-treesitter-textobjects.move'
+for keys, spec in pairs {
+  [']m'] = { 'goto_next_start', '@function.outer' },
+  [']]'] = { 'goto_next_start', '@class.outer' },
+  [']M'] = { 'goto_next_end', '@function.outer' },
+  [']['] = { 'goto_next_end', '@class.outer' },
+  ['[m'] = { 'goto_previous_start', '@function.outer' },
+  ['[['] = { 'goto_previous_start', '@class.outer' },
+  ['[M'] = { 'goto_previous_end', '@function.outer' },
+  ['[]'] = { 'goto_previous_end', '@class.outer' },
+} do
+  vim.keymap.set({ 'n', 'x', 'o' }, keys, function()
+    ts_move[spec[1]](spec[2], 'textobjects')
+  end, { desc = spec[1] .. ' ' .. spec[2] })
+end
+
+-- Textobjects: swap
+local ts_swap = require 'nvim-treesitter-textobjects.swap'
+vim.keymap.set('n', '<leader>a', function()
+  ts_swap.swap_next '@parameter.inner'
+end, { desc = 'Swap next parameter' })
+vim.keymap.set('n', '<leader>A', function()
+  ts_swap.swap_previous '@parameter.inner'
+end, { desc = 'Swap previous parameter' })
+
+-- NOTE: `incremental_selection` (<c-space>) was a `master`-branch module and has
+-- no replacement on `main`. The mapping is gone deliberately.
 
 -- [[ Configure LSP ]]
 --  This function gets run when an LSP connects to a particular buffer.
@@ -619,7 +630,8 @@ local servers = {
   -- gopls = {},
   -- pyright = {},
   -- rust_analyzer = {},
-  tsserver = {},
+  -- renamed from `tsserver` in nvim-lspconfig
+  ts_ls = {},
   html = { filetypes = { 'html', 'twig', 'hbs' } },
 
   lua_ls = {
@@ -646,16 +658,21 @@ mason_lspconfig.setup {
   ensure_installed = vim.tbl_keys(servers),
 }
 
-mason_lspconfig.setup_handlers {
-  function(server_name)
-    require('lspconfig')[server_name].setup {
-      capabilities = capabilities,
-      on_attach = on_attach,
-      settings = servers[server_name],
-      filetypes = (servers[server_name] or {}).filetypes,
-    }
-  end,
-}
+-- mason-lspconfig v2 removed `setup_handlers`, and Neovim 0.11+ configures
+-- servers through `vim.lsp.config` / `vim.lsp.enable` instead of
+-- `lspconfig[name].setup`. Shared options go to the '*' entry.
+vim.lsp.config('*', {
+  capabilities = capabilities,
+  on_attach = on_attach,
+})
+
+for server_name, server in pairs(servers) do
+  vim.lsp.config(server_name, {
+    settings = server,
+    filetypes = server.filetypes,
+  })
+  vim.lsp.enable(server_name)
+end
 
 -- [[ Configure nvim-cmp ]]
 -- See `:help cmp`
