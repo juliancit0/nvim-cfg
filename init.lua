@@ -382,6 +382,10 @@ vim.api.nvim_create_autocmd('TextYankPost', {
 require('telescope').setup {
   file_ignore_patterns = { "node_modules/.*" },
   defaults = {
+    -- NOTE: telescope.nvim (pinned 2024) calls `nvim-treesitter.parsers.ft_to_lang`,
+    -- which the nvim-treesitter `main` branch removed. Use the regex highlighter
+    -- in previews so `lsp_definitions` and `live_grep` do not error.
+    preview = { treesitter = false },
     mappings = {
       i = {
         ['<C-u>'] = false,
@@ -541,6 +545,22 @@ end, { desc = 'Swap previous parameter' })
 -- no replacement on `main`. The mapping is gone deliberately.
 
 -- [[ Configure LSP ]]
+-- Send Neovim's own LSP location results to a Telescope picker.
+-- NOTE: telescope's `builtin.lsp_*` pickers call the deprecated
+-- `vim.lsp.util.make_position_params()` without `position_encoding`, which makes
+-- Neovim 0.12 print a warning and a hit-enter prompt on every jump. Neovim's own
+-- `vim.lsp.buf.*` requests pass the encoding per client, so we run the request
+-- with them and keep Telescope only for choosing between multiple results.
+local function lsp_on_list(list)
+  vim.fn.setqflist({}, ' ', list)
+  if #list.items == 1 then
+    vim.cmd "normal! m'" -- keep <C-o> working
+    vim.cmd 'silent! cfirst'
+  else
+    require('telescope.builtin').quickfix { prompt_title = list.title }
+  end
+end
+
 --  This function gets run when an LSP connects to a particular buffer.
 local on_attach = function(_, bufnr)
   -- NOTE: Remember that lua is a real programming language, and as such it is possible
@@ -562,11 +582,21 @@ local on_attach = function(_, bufnr)
     vim.lsp.buf.code_action { context = { only = { 'quickfix', 'refactor', 'source' } } }
   end, '[C]ode [A]ction')
 
-  nmap('gd', require('telescope.builtin').lsp_definitions, '[G]oto [D]efinition')
-  nmap('gr', require('telescope.builtin').lsp_references, '[G]oto [R]eferences')
-  nmap('gI', require('telescope.builtin').lsp_implementations, '[G]oto [I]mplementation')
-  nmap('<leader>D', require('telescope.builtin').lsp_type_definitions, 'Type [D]efinition')
-  nmap('<leader>ds', require('telescope.builtin').lsp_document_symbols, '[D]ocument [S]ymbols')
+  nmap('gd', function()
+    vim.lsp.buf.definition { on_list = lsp_on_list }
+  end, '[G]oto [D]efinition')
+  nmap('gr', function()
+    vim.lsp.buf.references(nil, { on_list = lsp_on_list })
+  end, '[G]oto [R]eferences')
+  nmap('gI', function()
+    vim.lsp.buf.implementation { on_list = lsp_on_list }
+  end, '[G]oto [I]mplementation')
+  nmap('<leader>D', function()
+    vim.lsp.buf.type_definition { on_list = lsp_on_list }
+  end, 'Type [D]efinition')
+  nmap('<leader>ds', function()
+    vim.lsp.buf.document_symbol { on_list = lsp_on_list }
+  end, '[D]ocument [S]ymbols')
   nmap('<leader>ws', require('telescope.builtin').lsp_dynamic_workspace_symbols, '[W]orkspace [S]ymbols')
 
   -- See `:help K` for why this keymap
@@ -581,10 +611,13 @@ local on_attach = function(_, bufnr)
     print(vim.inspect(vim.lsp.buf.list_workspace_folders()))
   end, '[W]orkspace [L]ist Folders')
 
-  vim.api.nvim_create_autocmd("BufWritePre", {
-    pattern = { "*" },
+  local format_group = vim.api.nvim_create_augroup('user-lsp-format', { clear = false })
+  vim.api.nvim_clear_autocmds { group = format_group, buffer = bufnr }
+  vim.api.nvim_create_autocmd('BufWritePre', {
+    group = format_group,
+    buffer = bufnr,
     callback = function()
-      vim.lsp.buf.format()
+      vim.lsp.buf.format { bufnr = bufnr }
     end,
   })
 
@@ -663,7 +696,17 @@ mason_lspconfig.setup {
 -- `lspconfig[name].setup`. Shared options go to the '*' entry.
 vim.lsp.config('*', {
   capabilities = capabilities,
-  on_attach = on_attach,
+})
+
+-- NOTE: do NOT put `on_attach` in the '*' entry. A server's own `lsp/<name>.lua`
+-- in nvim-lspconfig may define `on_attach` too, and the per-server value replaces
+-- the '*' value (e.g. ts_ls), so the keymaps below would never be set.
+-- `LspAttach` fires for every client and cannot be replaced.
+vim.api.nvim_create_autocmd('LspAttach', {
+  group = vim.api.nvim_create_augroup('user-lsp-attach', { clear = true }),
+  callback = function(event)
+    on_attach(vim.lsp.get_client_by_id(event.data.client_id), event.buf)
+  end,
 })
 
 for server_name, server in pairs(servers) do
